@@ -42,11 +42,12 @@
             pointer-events: none;
             white-space: nowrap;
         }
+        /* 下载面板容器 */
         #download-panel {
             position: absolute;
             bottom: 80px;
             right: 30px;
-            background: rgba(30, 40, 50, 0.85);
+            background: rgba(30, 40, 50, 0.9);
             backdrop-filter: blur(10px);
             padding: 20px 22px;
             border-radius: 20px;
@@ -59,7 +60,14 @@
             z-index: 200;
             pointer-events: auto;
             font-size: 15px;
-            min-width: 170px;
+            min-width: 180px;
+            transition: transform 0.3s ease, opacity 0.3s ease;
+            transform-origin: bottom right;
+        }
+        #download-panel.hidden {
+            opacity: 0;
+            transform: scale(0.8) translateY(20px);
+            pointer-events: none;
         }
         #download-panel h4 {
             margin: 0 0 5px 0;
@@ -104,6 +112,11 @@
         .btn-download.glb:hover {
             background: rgba(130, 100, 210, 1);
         }
+        .btn-download:disabled {
+            opacity: 0.6;
+            cursor: wait;
+            transform: none;
+        }
         #download-tip {
             font-size: 12px;
             text-align: center;
@@ -118,6 +131,59 @@
             min-height: 20px;
             transition: opacity 0.3s;
         }
+        /* 关闭按钮 */
+        #close-panel {
+            position: absolute;
+            top: 10px;
+            right: 12px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            transition: all 0.2s;
+            padding: 0;
+        }
+        #close-panel:hover {
+            background: rgba(255, 80, 80, 0.8);
+            border-color: rgba(255, 100, 100, 0.8);
+        }
+        /* 显示面板的按钮（当面板关闭时显示） */
+        #toggle-panel-btn {
+            position: absolute;
+            bottom: 80px;
+            right: 30px;
+            background: rgba(30, 40, 50, 0.9);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 30px;
+            font-size: 15px;
+            cursor: pointer;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5);
+            z-index: 200;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+            letter-spacing: 1px;
+        }
+        #toggle-panel-btn:hover {
+            background: rgba(50, 70, 90, 0.95);
+            transform: translateY(-2px);
+        }
+        #toggle-panel-btn.hidden {
+            display: none;
+        }
         @media (max-width: 600px) {
             #download-panel {
                 bottom: 100px;
@@ -125,6 +191,12 @@
                 left: 15px;
                 width: auto;
                 padding: 16px;
+            }
+            #toggle-panel-btn {
+                bottom: 100px;
+                right: 15px;
+                left: 15px;
+                justify-content: center;
             }
             #info {
                 top: 10px;
@@ -147,7 +219,12 @@
     <div id="info">🦭 海豹建模 | 拖拽旋转 / 滚轮缩放</div>
     <div id="instruction">鼠标拖动查看 | 滚动缩放 | 点击右侧按钮下载 GLB 模型</div>
 
+    <!-- 显示面板的按钮 -->
+    <button id="toggle-panel-btn" class="hidden">⬇ 下载模型</button>
+
+    <!-- 下载面板 -->
     <div id="download-panel">
+        <button id="close-panel" title="关闭面板">✕</button>
         <h4>⬇ 下载模型</h4>
         <button id="download-glb" class="btn-download glb">
             <span>🦭</span> 导出 GLB 格式
@@ -488,7 +565,28 @@
         labelObj.position.set(0, 2.5, 0);
         sealGroup.add(labelObj);
 
-        // --- GLB 导出功能 ---
+        // ============================================================
+        // 面板关闭/显示逻辑
+        // ============================================================
+        const downloadPanel = document.getElementById('download-panel');
+        const toggleBtn = document.getElementById('toggle-panel-btn');
+        const closeBtn = document.getElementById('close-panel');
+
+        // 关闭面板：隐藏面板，显示切换按钮
+        closeBtn.addEventListener('click', () => {
+            downloadPanel.classList.add('hidden');
+            toggleBtn.classList.remove('hidden');
+        });
+
+        // 打开面板：显示面板，隐藏切换按钮
+        toggleBtn.addEventListener('click', () => {
+            downloadPanel.classList.remove('hidden');
+            toggleBtn.classList.add('hidden');
+        });
+
+        // ============================================================
+        // GLB 导出功能（已修复 [object Object] 问题）
+        // ============================================================
         const downloadBtn = document.getElementById('download-glb');
         const loadingMsg = document.getElementById('loading-message');
 
@@ -497,10 +595,8 @@
             loadingMsg.textContent = '正在生成 GLB，请稍候...';
             loadingMsg.style.color = '#ffdd88';
             downloadBtn.disabled = true;
-            downloadBtn.style.opacity = '0.7';
-            downloadBtn.style.cursor = 'wait';
 
-            // 临时移除 CSS2DObject 标签（因为标签是 HTML 元素，GLTFExporter 无法导出，且会导致错误）
+            // 临时移除 CSS2DObject 标签（HTML元素无法被 GLTFExporter 导出，且会导致错误）
             sealGroup.remove(labelObj);
 
             // 创建 GLTFExporter 实例
@@ -509,21 +605,35 @@
             // 导出选项：二进制 GLB，包含材质和几何体
             const options = {
                 binary: true,           // 输出为 GLB 二进制格式
-                embedImages: true,      // 嵌入任何纹理（本模型无纹理，但保留选项）
-                maxTextureSize: 2048,   // 纹理最大尺寸限制
+                embedImages: true,
+                maxTextureSize: 2048,
                 includeCustomExtensions: false,
-                animations: []           // 无动画
+                animations: []
             };
 
-            // 执行导出 (传入海豹组)
+            // 执行导出
             exporter.parse(sealGroup, (result) => {
-                // 导出成功，result 为 ArrayBuffer (binary: true)
-                const blob = new Blob([result], { type: 'application/octet-stream' });
+                // 修复：确保 result 是 ArrayBuffer，而不是对象
+                // GLTFExporter 在 binary: true 时返回 ArrayBuffer
+                // 某些版本可能返回对象，这里做兼容处理
+                let blob;
+                if (result instanceof ArrayBuffer) {
+                    blob = new Blob([result], { type: 'application/octet-stream' });
+                } else if (result && result.buffer instanceof ArrayBuffer) {
+                    blob = new Blob([result.buffer], { type: 'application/octet-stream' });
+                } else {
+                    // 如果 result 是对象（可能是旧版本或非二进制模式），尝试 JSON 序列化
+                    console.warn('GLTFExporter 返回非 ArrayBuffer，尝试 JSON 序列化');
+                    const jsonStr = JSON.stringify(result);
+                    blob = new Blob([jsonStr], { type: 'application/json' });
+                }
+
+                // 创建下载链接并触发下载
                 const link = document.createElement('a');
                 link.href = URL.createObjectURL(blob);
                 link.download = 'seal_model.glb';
                 link.click();
-                
+
                 // 清理 URL 对象
                 URL.revokeObjectURL(link.href);
 
@@ -534,26 +644,22 @@
                 loadingMsg.textContent = '✅ GLB 下载完成！';
                 loadingMsg.style.color = '#aaffaa';
                 downloadBtn.disabled = false;
-                downloadBtn.style.opacity = '1';
-                downloadBtn.style.cursor = 'pointer';
 
                 // 3 秒后清除提示
                 setTimeout(() => {
                     loadingMsg.textContent = '';
                 }, 3000);
             }, (error) => {
-                // 导出失败
+                // 导出失败处理
                 console.error('GLB 导出错误:', error);
                 loadingMsg.textContent = '❌ 导出失败，请重试';
                 loadingMsg.style.color = '#ff8888';
-                
+
                 // 恢复标签
                 sealGroup.add(labelObj);
 
                 // 恢复按钮状态
                 downloadBtn.disabled = false;
-                downloadBtn.style.opacity = '1';
-                downloadBtn.style.cursor = 'pointer';
 
                 setTimeout(() => {
                     loadingMsg.textContent = '';
@@ -561,7 +667,6 @@
             }, options);
         });
 
-        // 额外的辅助：在控制台提示 GLB 导出就绪
         console.log('海豹建模已加载，支持导出 GLB 格式！');
 
         // --- 动画循环 ---
