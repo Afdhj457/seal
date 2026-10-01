@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>海豹建模 - 3D 海豹</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: "Microsoft YaHei", sans-serif;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 12px 24px;
+            border-radius: 30px;
+            pointer-events: none;
+            font-size: 16px;
+            letter-spacing: 1px;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            z-index: 100;
+        }
+        #instruction {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.8);
+            background: rgba(0, 0, 0, 0.4);
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 14px;
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            z-index: 100;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">🦭 海豹建模 | 拖拽旋转 / 滚轮缩放</div>
+    <div id="instruction">鼠标拖动查看 | 滚动缩放</div>
+
+    <!-- 引入 Three.js 核心库和辅助库 -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+        // --- 初始化场景、相机、渲染器 ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xa0d8ef); // 浅蓝色天空
+        // 添加一点雾效，增加景深感
+        scene.fog = new THREE.Fog(0xa0d8ef, 20, 60);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(5, 4, 10);
+        camera.lookAt(0, 1, 0);
+
+        // WebGL 渲染器
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true; // 开启阴影
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap; // 柔和阴影
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // 控制器
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 1.2, 0);
+        controls.enableDamping = true;      // 惯性效果
+        controls.dampingFactor = 0.05;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 1.0;
+        controls.enableZoom = true;
+        controls.maxPolarAngle = Math.PI / 2; // 限制角度，避免看到地底下
+        controls.minDistance = 5;
+        controls.maxDistance = 25;
+
+        // --- 灯光设置 ---
+        // 环境光提供基础照明
+        const ambientLight = new THREE.AmbientLight(0x404060, 0.8);
+        scene.add(ambientLight);
+
+        // 主光源 - 产生阴影和立体感
+        const mainLight = new THREE.DirectionalLight(0xfff5e6, 1.2);
+        mainLight.position.set(8, 12, 8);
+        mainLight.castShadow = true;
+        mainLight.receiveShadow = true;
+        mainLight.shadow.mapSize.width = 1024;
+        mainLight.shadow.mapSize.height = 1024;
+        const d = 15;
+        mainLight.shadow.camera.left = -d;
+        mainLight.shadow.camera.right = d;
+        mainLight.shadow.camera.top = d;
+        mainLight.shadow.camera.bottom = -d;
+        mainLight.shadow.camera.near = 1;
+        mainLight.shadow.camera.far = 30;
+        mainLight.shadow.bias = -0.0005;
+        scene.add(mainLight);
+
+        // 补光 - 从背面和侧面补充颜色，使海豹更生动
+        const fillLight1 = new THREE.PointLight(0xffaa88, 0.5);
+        fillLight1.position.set(-5, 3, 5);
+        scene.add(fillLight1);
+
+        const fillLight2 = new THREE.PointLight(0x88aaff, 0.4);
+        fillLight2.position.set(5, 2, -5);
+        scene.add(fillLight2);
+
+        // 添加一点蓝色氛围光
+        const backLight = new THREE.PointLight(0x88ccff, 0.3);
+        backLight.position.set(-3, 1, -8);
+        scene.add(backLight);
+
+        // --- 地面 (为了阴影和视觉效果) ---
+        const groundGeometry = new THREE.CircleGeometry(15, 32);
+        const groundMaterial = new THREE.MeshStandardMaterial({ 
+            color: 0x8cb8d4, 
+            roughness: 0.8, 
+            metalness: 0.1,
+            transparent: true,
+            opacity: 0.7
+        });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -0.01;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // 添加一些装饰性的小点 (模拟冰面或光点)
+        const gridHelper = new THREE.GridHelper(20, 20, 0xffffff, 0x88aacc);
+        gridHelper.position.y = 0;
+        gridHelper.material.transparent = true;
+        gridHelper.material.opacity = 0.2;
+        scene.add(gridHelper);
+
+        // 添加一些漂浮的粒子作为环境点缀 (水汽)
+        const particleCount = 400;
+        const particlesGeo = new THREE.BufferGeometry();
+        const particlesPos = new Float32Array(particleCount * 3);
+        for (let i = 0; i < particleCount; i++) {
+            particlesPos[i*3] = (Math.random() - 0.5) * 40;
+            particlesPos[i*3+1] = Math.random() * 15;
+            particlesPos[i*3+2] = (Math.random() - 0.5) * 40;
+        }
+        particlesGeo.setAttribute('position', new THREE.BufferAttribute(particlesPos, 3));
+        const particlesMat = new THREE.PointsMaterial({
+            color: 0xffffff,
+            size: 0.1,
+            transparent: true,
+            opacity: 0.4,
+            blending: THREE.AdditiveBlending
+        });
+        const particles = new THREE.Points(particlesGeo, particlesMat);
+        scene.add(particles);
+
+        // --- 创建海豹模型 (使用基本几何体组合) ---
+        const sealGroup = new THREE.Group();
+
+        // 材质定义
+        const sealBodyMat = new THREE.MeshStandardMaterial({ 
+            color: 0x7a9eb3,  // 灰蓝色
+            roughness: 0.6, 
+            metalness: 0.1,
+            emissive: new THREE.Color(0x223344),
+            emissiveIntensity: 0.1
+        });
+        
+        const sealBellyMat = new THREE.MeshStandardMaterial({ 
+            color: 0xc0d0dd,  // 浅灰白
+            roughness: 0.7, 
+            metalness: 0.05
+        });
+
+        const eyeMat = new THREE.MeshStandardMaterial({ color: 0x111122, roughness: 0.2, emissive: new THREE.Color(0x222233) });
+        const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+        const noseMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.4 });
+        const whiskerMat = new THREE.LineBasicMaterial({ color: 0xeeeeee });
+
+        // ---- 身体 (主要部分) ----
+        // 使用一个拉长的球体作为身体，然后通过缩放让它更像海豹
+        const bodyGeo = new THREE.SphereGeometry(1, 32, 32);
+        const body = new THREE.Mesh(bodyGeo, sealBodyMat);
+        body.scale.set(2.2, 1.0, 1.4);
+        body.position.set(0, 1.0, 0);
+        body.castShadow = true;
+        body.receiveShadow = true;
+        sealGroup.add(body);
+
+        // 肚子 (稍微小一点，颜色浅，放在身体前方偏下)
+        const bellyGeo = new THREE.SphereGeometry(0.9, 24, 24);
+        const belly = new THREE.Mesh(bellyGeo, sealBellyMat);
+        belly.scale.set(1.8, 0.8, 1.0);
+        belly.position.set(0, 0.85, 0.6);
+        belly.castShadow = true;
+        belly.receiveShadow = true;
+        sealGroup.add(belly);
+
+        // ---- 头部 ----
+        const headGeo = new THREE.SphereGeometry(0.75, 32, 32);
+        const head = new THREE.Mesh(headGeo, sealBodyMat);
+        head.scale.set(1.0, 0.9, 0.9);
+        head.position.set(1.9, 1.25, 0.1);
+        head.castShadow = true;
+        head.receiveShadow = true;
+        sealGroup.add(head);
+
+        // 吻部 (鼻子区域)
+        const snoutGeo = new THREE.SphereGeometry(0.4, 24, 24);
+        const snout = new THREE.Mesh(snoutGeo, sealBellyMat);
+        snout.scale.set(0.8, 0.6, 0.7);
+        snout.position.set(2.45, 1.0, 0.1);
+        snout.castShadow = true;
+        snout.receiveShadow = true;
+        sealGroup.add(snout);
+
+        // 鼻子 (黑色小球)
+        const noseGeo = new THREE.SphereGeometry(0.12, 16, 16);
+        const nose = new THREE.Mesh(noseGeo, noseMat);
+        nose.position.set(2.75, 1.05, 0.1);
+        nose.castShadow = true;
+        sealGroup.add(nose);
+
+        // 眼睛 (左右)
+        const eyeGeo = new THREE.SphereGeometry(0.14, 16, 16);
+        const eyeWhiteGeo = new THREE.SphereGeometry(0.16, 16, 16);
+
+        // 左眼 (从海豹视角的左边，即负Z方向，但我们是面向X轴正方向，所以左侧是Z负)
+        const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+        eyeL.position.set(2.05, 1.4, -0.4);
+        eyeL.castShadow = true;
+        sealGroup.add(eyeL);
+        // 左眼白
+        const eyeWhiteL = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
+        eyeWhiteL.position.set(2.02, 1.42, -0.43);
+        eyeWhiteL.scale.set(0.9, 0.9, 0.9);
+        eyeWhiteL.castShadow = true;
+        sealGroup.add(eyeWhiteL);
+        // 瞳孔 (小黑点)
+        const pupilL = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), new THREE.MeshStandardMaterial({ color: 0x000000 }));
+        pupilL.position.set(2.08, 1.44, -0.44);
+        pupilL.castShadow = true;
+        sealGroup.add(pupilL);
+
+        // 右眼
+        const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+        eyeR.position.set(2.05, 1.4, 0.6);
+        eyeR.castShadow = true;
+        sealGroup.add(eyeR);
+        const eyeWhiteR = new THREE.Mesh(eyeWhiteGeo, eyeWhiteMat);
+        eyeWhiteR.position.set(2.02, 1.42, 0.63);
+        eyeWhiteR.scale.set(0.9, 0.9, 0.9);
+        eyeWhiteR.castShadow = true;
+        sealGroup.add(eyeWhiteR);
+        const pupilR = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), new THREE.MeshStandardMaterial({ color: 0x000000 }));
+        pupilR.position.set(2.08, 1.44, 0.64);
+        pupilR.castShadow = true;
+        sealGroup.add(pupilR);
+
+        // 胡须 (使用线段)
+        const whiskerPoints = [
+            [2.7, 1.0, 0.25], [3.0, 0.95, 0.2], [3.2, 0.9, 0.15],
+            [2.7, 0.95, -0.05], [3.0, 0.9, -0.1], [3.2, 0.85, -0.15],
+            [2.7, 0.85, 0.15], [3.0, 0.8, 0.1], [3.2, 0.75, 0.05],
+            [2.7, 0.9, -0.2], [3.0, 0.85, -0.25], [3.2, 0.8, -0.3]
+        ];
+        whiskerPoints.forEach(([x, y, z]) => {
+            const points = [
+                new THREE.Vector3(x, y, z),
+                new THREE.Vector3(x + 0.5, y - 0.15, z * 1.1)
+            ];
+            const geometry = new THREE.BufferGeometry().setFromPoints(points);
+            const line = new THREE.Line(geometry, whiskerMat);
+            sealGroup.add(line);
+        });
+
+        // ---- 鳍状肢 (前肢) ----
+        const flipperGeo = new THREE.SphereGeometry(0.5, 24, 24);
+        const flipperMat = new THREE.MeshStandardMaterial({ color: 0x6a8fa8, roughness: 0.6 });
+
+        // 左前鳍 (靠近Z负)
+        const flipperFrontL = new THREE.Mesh(flipperGeo, flipperMat);
+        flipperFrontL.scale.set(0.8, 0.3, 0.5);
+        flipperFrontL.position.set(1.2, 0.8, -1.0);
+        flipperFrontL.rotation.z = 0.3;
+        flipperFrontL.rotation.x = 0.4;
+        flipperFrontL.rotation.y = -0.3;
+        flipperFrontL.castShadow = true;
+        flipperFrontL.receiveShadow = true;
+        sealGroup.add(flipperFrontL);
+
+        // 右前鳍 (靠近Z正)
+        const flipperFrontR = new THREE.Mesh(flipperGeo, flipperMat);
+        flipperFrontR.scale.set(0.8, 0.3, 0.5);
+        flipperFrontR.position.set(1.2, 0.8, 1.2);
+        flipperFrontR.rotation.z = 0.3;
+        flipperFrontR.rotation.x = -0.4;
+        flipperFrontR.rotation.y = 0.3;
+        flipperFrontR.castShadow = true;
+        flipperFrontR.receiveShadow = true;
+        sealGroup.add(flipperFrontR);
+
+        // ---- 后鳍 (尾部) ----
+        // 使用两个扁平的椭球体模仿尾鳍
+        const tailGeo = new THREE.SphereGeometry(0.6, 24, 24);
+        
+        const tailL = new THREE.Mesh(tailGeo, flipperMat);
+        tailL.scale.set(0.9, 0.25, 0.6);
+        tailL.position.set(-2.4, 0.9, -0.7);
+        tailL.rotation.z = -0.2;
+        tailL.rotation.y = -0.5;
+        tailL.rotation.x = 0.3;
+        tailL.castShadow = true;
+        tailL.receiveShadow = true;
+        sealGroup.add(tailL);
+
+        const tailR = new THREE.Mesh(tailGeo, flipperMat);
+        tailR.scale.set(0.9, 0.25, 0.6);
+        tailR.position.set(-2.4, 0.9, 0.7);
+        tailR.rotation.z = -0.2;
+        tailR.rotation.y = 0.5;
+        tailR.rotation.x = -0.3;
+        tailR.castShadow = true;
+        tailR.receiveShadow = true;
+        sealGroup.add(tailR);
+
+        // 尾部连接处稍微加一点圆润
+        const tailCenter = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), sealBodyMat);
+        tailCenter.scale.set(0.8, 0.6, 0.8);
+        tailCenter.position.set(-2.0, 0.9, 0);
+        tailCenter.castShadow = true;
+        tailCenter.receiveShadow = true;
+        sealGroup.add(tailCenter);
+
+        // 将海豹整体稍微抬高一点，使其更自然
+        sealGroup.position.y = 0.2;
+        sealGroup.position.x = -0.5; // 居中调整
+        scene.add(sealGroup);
+
+        // --- 添加一个雪/冰堆效果 (简单的白色半球体作为装饰) ---
+        const snowGeo = new THREE.SphereGeometry(0.8, 16, 16);
+        const snowMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.9, emissive: new THREE.Color(0x6688aa), emissiveIntensity: 0.1 });
+        const snow = new THREE.Mesh(snowGeo, snowMat);
+        snow.scale.set(1.5, 0.3, 1.5);
+        snow.position.set(-2, 0.15, -1.5);
+        snow.receiveShadow = true;
+        snow.castShadow = true;
+        scene.add(snow);
+
+        const snow2 = new THREE.Mesh(snowGeo, snowMat);
+        snow2.scale.set(1.2, 0.4, 1.2);
+        snow2.position.set(3, 0.2, 2);
+        snow2.receiveShadow = true;
+        snow2.castShadow = true;
+        scene.add(snow2);
+
+        // --- 简单的 CSS2D 标签 (可选，为了增加趣味) ---
+        const labelRenderer = new CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.left = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none'; // 让标签不阻挡鼠标事件
+        document.body.appendChild(labelRenderer.domElement);
+
+        const labelDiv = document.createElement('div');
+        labelDiv.textContent = '🦭 海豹';
+        labelDiv.style.color = 'white';
+        labelDiv.style.fontSize = '20px';
+        labelDiv.style.fontWeight = 'bold';
+        labelDiv.style.textShadow = '2px 2px 4px black';
+        labelDiv.style.background = 'rgba(0,0,0,0.3)';
+        labelDiv.style.padding = '4px 12px';
+        labelDiv.style.borderRadius = '20px';
+        labelDiv.style.backdropFilter = 'blur(3px)';
+        labelDiv.style.border = '1px solid rgba(255,255,255,0.3)';
+        
+        const labelObj = new CSS2DObject(labelDiv);
+        labelObj.position.set(0, 2.5, 0); // 放在海豹上方
+        sealGroup.add(labelObj);
+
+        // --- 动画循环 ---
+        let clock = new THREE.Clock();
+
+        function animate() {
+            const delta = clock.getDelta();
+            const elapsedTime = performance.now() * 0.001; // seconds
+
+            // 自动旋转由 OrbitControls 的 autoRotate 处理，我们只需更新控制器
+            controls.update();
+
+            // 让海豹轻微浮动 (使模型更生动)
+            sealGroup.position.y = 0.2 + Math.sin(elapsedTime * 2) * 0.05;
+            // 轻微左右摆动头部? 为了简单，不做复杂骨骼动画，但可以整体轻微旋转
+            // sealGroup.rotation.y = Math.sin(elapsedTime * 0.5) * 0.1; // 如果要摆动整体可以取消注释
+
+            // 粒子缓慢旋转
+            particles.rotation.y += 0.0005;
+
+            // 渲染
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        // --- 窗口大小自适应 ---
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // 用户交互时暂停自动旋转
+        renderer.domElement.addEventListener('mousedown', () => {
+            controls.autoRotate = false;
+        });
+        renderer.domElement.addEventListener('mouseup', () => {
+            // 可以设置延迟重新开启，或者保持关闭。这里让用户操作后保持关闭，或者再点一下开启? 
+            // 为了方便，我们设置5秒后重新开启自动旋转
+            setTimeout(() => {
+                if (!controls.autoRotate) {
+                    controls.autoRotate = true;
+                }
+            }, 5000);
+        });
+        // 触摸设备支持
+        renderer.domElement.addEventListener('touchstart', () => {
+            controls.autoRotate = false;
+        });
+        renderer.domElement.addEventListener('touchend', () => {
+            setTimeout(() => {
+                if (!controls.autoRotate) {
+                    controls.autoRotate = true;
+                }
+            }, 5000);
+        });
+
+        console.log('海豹建模已加载！');
+    </script>
+</body>
+</html>
